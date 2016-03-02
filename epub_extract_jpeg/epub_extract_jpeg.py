@@ -114,8 +114,10 @@ def _convert_png_to_jpeg(source_dir, image_path, output_dir, page_index):
     try:
         from PIL import Image
     except ImportError:
-        print('PNG image found. Converting png to jpeg, require PIL.', file=sys.stderr)
-        print('Try: "pip install PIL" or "pip install pillow"', file=sys.stderr)
+        print('PNG image found. Converting png to jpeg, require PIL.',
+              file=sys.stderr)
+        print('Try: "pip install PIL" or "pip install pillow"',
+              file=sys.stderr)
         raise
 
     source_image_path = os.path.join(source_dir, image_path)
