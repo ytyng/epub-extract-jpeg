@@ -1,1 +1,1 @@
-Put EPUBs this directory and run ./runtests.py
+Put EPUBs this directory and run ./test-extract.sh
