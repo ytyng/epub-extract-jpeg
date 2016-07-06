@@ -6,15 +6,13 @@ EPUB ファイルを jpeg に展開する
 """
 from __future__ import print_function, unicode_literals
 import os
-import time
 import sys
 import subprocess
 import shutil
 import argparse
+import tempfile
 from xml.etree import ElementTree
 import re
-
-TEMP_DIR = '/tmp/epub-extract-{}'.format(int(time.time()))
 
 
 def procedure(file_path, convert_png=True):
@@ -32,15 +30,15 @@ def procedure(file_path, convert_png=True):
         print("{} is already exists.".format(output_dir), file=sys.stderr)
         return
 
-    os.mkdir(TEMP_DIR)
+    temp_dir = tempfile.mkdtemp(suffix='epub-extract-')
 
     subprocess.Popen(
-        ('unzip', file_path, "-d", TEMP_DIR),
+        ('unzip', file_path, "-d", temp_dir),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
 
     os.mkdir(output_dir)
 
-    content_xml_path = find_content_xml_path(TEMP_DIR)
+    content_xml_path = find_content_xml_path(temp_dir)
 
     image_paths = _get_image_paths(content_xml_path)
 
@@ -50,7 +48,7 @@ def procedure(file_path, convert_png=True):
         _move_jpeg_file(root_dir, image_path, output_dir, i,
                         convert_png=convert_png)
 
-    shutil.rmtree(TEMP_DIR)
+    shutil.rmtree(temp_dir)
 
 
 def _get_image_paths(content_xml_path):
@@ -140,7 +138,7 @@ def find_content_xml_path(temp_dir):
         ".//{urn:oasis:names:tc:opendocument:xmlns:container}rootfile")
     content_opf_path = rootfile_node.attrib['full-path']
 
-    content_xml_path = os.path.join(TEMP_DIR, content_opf_path)
+    content_xml_path = os.path.join(temp_dir, content_opf_path)
     if os.path.exists(content_xml_path):
         return content_xml_path
     else:
