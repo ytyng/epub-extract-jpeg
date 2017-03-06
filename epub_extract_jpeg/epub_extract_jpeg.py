@@ -90,7 +90,6 @@ class ImagePage(object):
     """
     画像ページ のクラス
     """
-
     class ItemHrefNotFound(Exception):
         pass
 
@@ -149,29 +148,14 @@ class ImagePage(object):
         画像のフルパス
         :return:
         """
-        href = self.image_element.attrib.get('{http://www.w3.org/1999/xlink}href')
+        href = self.image_element.attrib.get(
+            '{http://www.w3.org/1999/xlink}href')
         return os.path.join(os.path.dirname(self.page_xhtml_path), href)
 
     # その他プロパティが必要であれば
     # self.image_element.attrib.get('width', None)
     # self.image_element.attrib.get('height', None)
     # self.image_element.attrib.get('width', None)
-
-    # image.file_path = os.path.join(os.path.dirname(page_xml_path), href)
-    # image.is_cover = self.image_is_cover(image)
-    # return image
-
-    # def image_convert_required(self):
-    #     """
-    #     画像をjpegにコンバートする?
-    #     :return:
-    #     """
-    #     return self.image_path.endswith('.png')
-    #
-    # def move_image_file(self):
-    #     if self.image_convert_required():
-    #         pass
-    #     else:
 
     @cached_property
     def is_png(self):
@@ -263,6 +247,9 @@ class EpubExtractJpeg(object):
 
     @cached_property
     def itemrefs(self):
+        """
+        spine > itemref をページ順に返すジェネレータ
+        """
         spine = self.content_xml_etree.find(
             './/{http://www.idpf.org/2007/opf}spine')
         itemrefs = spine.findall('.//{http://www.idpf.org/2007/opf}itemref')
@@ -270,9 +257,6 @@ class EpubExtractJpeg(object):
             yield itemref
 
     def get_image_pages(self):
-
-        # spine = etree.find('.//{http://www.idpf.org/2007/opf}spine')
-        # itemrefs = spine.findall('.//{http://www.idpf.org/2007/opf}itemref')
         items_dict = self.items_dict
 
         for itemref in self.itemrefs:
@@ -286,44 +270,8 @@ class EpubExtractJpeg(object):
 
             item = items_dict[idref]
 
-            # image = self.get_image_from_item_tag(item, itemref)
             page_image = ImagePage(item, itemref, self)
             yield page_image
-            # return image
-
-            # image_paths_prior = []
-            # image_paths = []
-            # for item in items:
-            #     media_type = item.attrib.get('media-type', None)
-            #     if not media_type:
-            #         continue
-            #     if media_type not in {'image/jpeg', 'image/png'}:
-            #         continue
-            #     if self.element_is_prior(item):
-            #         # 表紙だった。(表紙が最後にある場合がある)
-            #         image_paths_prior.append(item.attrib['href'])
-            #     else:
-            #         image_paths.append(item.attrib['href'])
-            #
-            # return image_paths_prior + image_paths
-
-    # def get_image_page_from_item_tag(self, item):
-    #     """
-    #     <item>タグから 画像クラスを取得
-    #     """
-    #     return ImagePage(item, self)
-
-    # def image_is_cover(self, image):
-    #     """
-    #     表紙エレメントか?
-    #     """
-    #     properties = element.attrib.get('properties', None)
-    #     if properties and properties.startswith('cover'):
-    #         return True
-    #     element_id = element.attrib.get('id', None)
-    #     if element_id == "cover":
-    #         return True
-    #     return False
 
     def _move_jpeg_file(self, image_page, output_dir,
                         page_index, convert_png=True):
@@ -344,30 +292,6 @@ class EpubExtractJpeg(object):
             output_dir, destination_image_name)
         shutil.move(source_image_path, destination_image_path)
         print('{} -> {}'.format(source_image_path, destination_image_name))
-
-        # def _convert_png_to_jpeg(self, source_dir, image_path, output_dir,
-        #                          page_index):
-        #     """
-        #     PNG を Jpeg に変換して移動
-        #     """
-        #     try:
-        #         from PIL import Image
-        #     except ImportError:
-        #         print('PNG image found. Converting png to jpeg, require PIL.',
-        #               file=sys.stderr)
-        #         print('Try: "pip install PIL" or "pip install pillow"',
-        #               file=sys.stderr)
-        #         raise
-        #
-        #     source_image_path = os.path.join(source_dir, image_path)
-        #     destination_image_name = '{:03d}.jpg'.format(page_index)
-        #     destination_image_path = os.path.join(
-        #         output_dir, destination_image_name)
-        #     im = Image.open(source_image_path)
-        #     im = im.convert("RGB")
-        #     im.save(destination_image_path, 'jpeg', quality=70)
-        #     os.remove(source_image_path)
-        #     print('{} -> {}'.format(image_path, destination_image_name))
 
 
 def procedure(file_path, convert_png=True):
