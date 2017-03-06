@@ -5,144 +5,23 @@
 EPUB ファイルを jpeg に展開する
 """
 from __future__ import print_function, unicode_literals
-import os
-import sys
-import subprocess
-import shutil
+
 import argparse
+import os
+import re
+import shutil
+import subprocess
+import sys
 import tempfile
 from xml.etree import ElementTree
-import re
 
-
-def procedure(file_path, convert_png=True):
-    if not os.path.exists(file_path):
-        print("{} is not exist.".format(file_path), file=sys.stderr)
-        return
-
-    output_dir, ext = os.path.splitext(file_path)
-
-    if ext != '.epub':
-        print("{} is not epub.".format(file_path), file=sys.stderr)
-        return
-
-    if os.path.exists(output_dir):
-        print("{} is already exists.".format(output_dir), file=sys.stderr)
-        return
-
-    temp_dir = tempfile.mkdtemp(suffix='epub-extract-')
-
-    subprocess.Popen(
-        ('unzip', file_path, "-d", temp_dir),
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-
-    os.mkdir(output_dir)
-
-    content_xml_path = find_content_xml_path(temp_dir)
-
-    image_paths = _get_image_paths(content_xml_path)
-
-    root_dir = os.path.dirname(content_xml_path)
-
-    for i, image_path in enumerate(image_paths, start=1):
-        _move_jpeg_file(root_dir, image_path, output_dir, i,
-                        convert_png=convert_png)
-
-    shutil.rmtree(temp_dir)
-
-
-def _get_image_paths(content_xml_path):
-    etree = parse_xml_with_recover(content_xml_path)
-    manifest = etree.find('.//{http://www.idpf.org/2007/opf}manifest')
-    items = manifest.findall('.//{http://www.idpf.org/2007/opf}item')
-
-    image_paths_prior = []
-    image_paths = []
-    for item in items:
-        media_type = item.attrib.get('media-type', None)
-        if not media_type:
-            continue
-        if media_type not in {'image/jpeg', 'image/png'}:
-            continue
-        if element_is_prior(item):
-            # 表紙だった。(表紙が最後にある場合がある)
-            image_paths_prior.append(item.attrib['href'])
-        else:
-            image_paths.append(item.attrib['href'])
-
-    return image_paths_prior + image_paths
-
-
-def element_is_prior(element):
-    """
-    表紙エレメントか?
-    """
-    properties = element.attrib.get('properties', None)
-    if properties and properties.startswith('cover'):
-        return True
-    element_id = element.attrib.get('id', None)
-    if element_id == "cover":
-        return True
-    return False
-
-
-def _move_jpeg_file(source_dir, image_path, output_dir,
-                    page_index, convert_png=True):
-    source_image_path = os.path.join(source_dir, image_path)
-
-    if image_path.endswith('.png'):
-        if convert_png:
-            # PNGを変換する場合
-            _convert_png_to_jpeg(
-                source_dir, image_path, output_dir, page_index)
-            return
-        destination_image_name = '{:03d}.png'.format(page_index)
-    else:
-        destination_image_name = '{:03d}.jpg'.format(page_index)
-    destination_image_path = os.path.join(
-        output_dir, destination_image_name)
-    shutil.move(source_image_path, destination_image_path)
-    print('{} -> {}'.format(image_path, destination_image_name))
-
-
-def _convert_png_to_jpeg(source_dir, image_path, output_dir, page_index):
-    """
-    PNG を Jpeg に変換して移動
-    """
+try:
+    from pip.utils import cached_property
+except ImportError:
     try:
-        from PIL import Image
+        from django.utils.functional import cached_property
     except ImportError:
-        print('PNG image found. Converting png to jpeg, require PIL.',
-              file=sys.stderr)
-        print('Try: "pip install PIL" or "pip install pillow"',
-              file=sys.stderr)
         raise
-
-    source_image_path = os.path.join(source_dir, image_path)
-    destination_image_name = '{:03d}.jpg'.format(page_index)
-    destination_image_path = os.path.join(
-        output_dir, destination_image_name)
-    im = Image.open(source_image_path)
-    im = im.convert("RGB")
-    im.save(destination_image_path, 'jpeg', quality=70)
-    os.remove(source_image_path)
-    print('{} -> {}'.format(image_path, destination_image_name))
-
-
-def find_content_xml_path(temp_dir):
-    # content.xml のファイルパスを返す META-INF/container.xml で固定
-    container_xml_path = os.path.join(temp_dir, 'META-INF', 'container.xml')
-    etree = parse_xml_with_recover(container_xml_path)
-    # rootfile タグを探す
-    rootfile_node = etree.find(
-        ".//{urn:oasis:names:tc:opendocument:xmlns:container}rootfile")
-    content_opf_path = rootfile_node.attrib['full-path']
-
-    content_xml_path = os.path.join(temp_dir, content_opf_path)
-    if os.path.exists(content_xml_path):
-        return content_xml_path
-    else:
-        print('content_xml_path not found: {}', content_xml_path)
 
 
 def parse_xml_with_recover(xml_path):
@@ -169,15 +48,331 @@ def parse_xml_with_recover(xml_path):
     return ElementTree.fromstring(xml_source)
 
 
+def convert_to_jpeg(source_file_path, destination_file_path, jpeg_quality=70):
+    """
+    PNG を Jpeg に変換して移動
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        print('PNG image found. Converting png to jpeg, require PIL.',
+              file=sys.stderr)
+        print('Try: "pip install PIL" or "pip install pillow"',
+              file=sys.stderr)
+        raise
+
+    im = Image.open(source_file_path)
+    im = im.convert("RGB")
+    im.save(destination_file_path, 'jpeg', quality=jpeg_quality)
+    os.remove(source_file_path)
+    print('{} -> {}'.format(source_file_path, destination_file_path))
+
+
 re_entity = re.compile(r'(>[^<]*)(&)([^<]*<)')
 re_replace = re.compile(r'&(?!\w*?;)')
 
 
 def xml_repair(xml_source):
+    """
+    XMLのソースコードの & を &amp; に変換する
+    :param self:
+    :param xml_source:
+    :return:
+    """
+
     def _replace(matcher):
         return re_replace.sub('&amp;', matcher.group(0))
 
     return re_entity.sub(_replace, xml_source)
+
+
+class ImagePage(object):
+    """
+    画像ページ のクラス
+    """
+
+    class ItemHrefNotFound(Exception):
+        pass
+
+    class InvalidImageLength(Exception):
+        pass
+
+    def __init__(self, item_element, itemref_element, epub_extract_jpeg):
+        self.item_element = item_element
+        self.itemref_element = itemref_element
+        self.epub_extract_jpeg = epub_extract_jpeg
+
+    @cached_property
+    def page_xhtml_path(self):
+        """
+        ページのXMLのパス
+        例: item/xhtml/001.xhtml
+        :return:
+        """
+        item_href = self.item_element.attrib.get('href', None)
+        if not item_href:
+            raise self.ItemHrefNotFound(self.item_element)
+
+        return os.path.join(
+            self.epub_extract_jpeg.content_base_dir, item_href)
+
+    # page_xml_path = os.path.join(self.content_base_dir, item_href)
+
+    @cached_property
+    def page_xhtml_etree(self):
+        # ページを解析
+        return parse_xml_with_recover(self.page_xhtml_path)
+
+    @cached_property
+    def image_element(self):
+
+        if self.item_element.attrib.get('properties') == 'svg':
+            # SVGラッピング 日本のコミックEPUBでよくある形式
+            svg = self.page_xhtml_etree.find(
+                './/{http://www.w3.org/2000/svg}svg')
+            images = svg.findall('.//{http://www.w3.org/2000/svg}image')
+
+        else:
+            # ここ未テスト
+            images = self.page_xhtml_etree.findall(
+                './/{http://www.w3.org/1999/xhtml}img')
+
+        if len(images) != 1:
+            raise self.InvalidImageLength('{}, {}'.format(
+                self.item_element, len(images)))
+
+        return images[0]
+
+    @cached_property
+    def image_path(self):
+        """
+        画像のフルパス
+        :return:
+        """
+        href = self.image_element.attrib.get('{http://www.w3.org/1999/xlink}href')
+        return os.path.join(os.path.dirname(self.page_xhtml_path), href)
+
+    # その他プロパティが必要であれば
+    # self.image_element.attrib.get('width', None)
+    # self.image_element.attrib.get('height', None)
+    # self.image_element.attrib.get('width', None)
+
+    # image.file_path = os.path.join(os.path.dirname(page_xml_path), href)
+    # image.is_cover = self.image_is_cover(image)
+    # return image
+
+    # def image_convert_required(self):
+    #     """
+    #     画像をjpegにコンバートする?
+    #     :return:
+    #     """
+    #     return self.image_path.endswith('.png')
+    #
+    # def move_image_file(self):
+    #     if self.image_convert_required():
+    #         pass
+    #     else:
+
+    @cached_property
+    def is_png(self):
+        return self.image_path.endswith('.png')
+
+
+class EpubExtractJpeg(object):
+    class IdRefNotFound(Exception):
+        pass
+
+    class ItemNotFound(Exception):
+        pass
+
+    def __init__(self, file_path, convert_png=True):
+
+        self.file_path = file_path
+        self.convert_png = convert_png
+
+    def extract(self):
+        if not os.path.exists(self.file_path):
+            print("{} is not exist.".format(self.file_path), file=sys.stderr)
+            return
+
+        output_dir, ext = os.path.splitext(self.file_path)
+
+        if ext != '.epub':
+            print("{} is not epub.".format(self.file_path), file=sys.stderr)
+            return
+
+        if os.path.exists(output_dir):
+            print("{} is already exists.".format(output_dir), file=sys.stderr)
+            return
+
+        self.temp_dir = tempfile.mkdtemp(suffix='epub-extract-')
+
+        subprocess.Popen(
+            ('unzip', self.file_path, "-d", self.temp_dir),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+
+        os.mkdir(output_dir)
+
+        # root_dir = os.path.dirname(self.content_xml_path)
+
+        for i, image_page in enumerate(self.get_image_pages(), start=1):
+            self._move_jpeg_file(image_page, output_dir, i,
+                                 convert_png=self.convert_png)
+
+        shutil.rmtree(self.temp_dir)
+
+    @cached_property
+    def content_xml_path(self):
+        # content.xml (standard.opf) のファイルパスを返す META-INF/container.xml で固定
+        container_xml_path = os.path.join(self.temp_dir, 'META-INF',
+                                          'container.xml')
+        etree = parse_xml_with_recover(container_xml_path)
+        # rootfile タグを探す
+        rootfile_node = etree.find(
+            ".//{urn:oasis:names:tc:opendocument:xmlns:container}rootfile")
+        content_opf_path = rootfile_node.attrib['full-path']
+
+        content_xml_path = os.path.join(self.temp_dir, content_opf_path)
+        if os.path.exists(content_xml_path):
+            return content_xml_path
+        else:
+            print('content_xml_path not found: {}', content_xml_path)
+
+    @cached_property
+    def content_xml_etree(self):
+        return parse_xml_with_recover(self.content_xml_path)
+
+    @cached_property
+    def content_base_dir(self):
+        # ファイルのパス基準となるディレクトリ
+        return os.path.dirname(self.content_xml_path)
+
+    @cached_property
+    def items_dict(self):
+        """
+        id をキーにした item の辞書
+        """
+        manifest = self.content_xml_etree.find(
+            './/{http://www.idpf.org/2007/opf}manifest')
+        items = manifest.findall('.//{http://www.idpf.org/2007/opf}item')
+        items_dict = {}
+        for item in items:
+            id = item.attrib.get('id')
+            items_dict[id] = item
+        return items_dict
+
+    @cached_property
+    def itemrefs(self):
+        spine = self.content_xml_etree.find(
+            './/{http://www.idpf.org/2007/opf}spine')
+        itemrefs = spine.findall('.//{http://www.idpf.org/2007/opf}itemref')
+        for itemref in itemrefs:
+            yield itemref
+
+    def get_image_pages(self):
+
+        # spine = etree.find('.//{http://www.idpf.org/2007/opf}spine')
+        # itemrefs = spine.findall('.//{http://www.idpf.org/2007/opf}itemref')
+        items_dict = self.items_dict
+
+        for itemref in self.itemrefs:
+
+            idref = itemref.attrib.get('idref', None)
+            if not idref:
+                raise self.IdRefNotFound(itemref)
+
+            if idref not in items_dict:
+                raise self.ItemNotFound(idref)
+
+            item = items_dict[idref]
+
+            # image = self.get_image_from_item_tag(item, itemref)
+            page_image = ImagePage(item, itemref, self)
+            yield page_image
+            # return image
+
+            # image_paths_prior = []
+            # image_paths = []
+            # for item in items:
+            #     media_type = item.attrib.get('media-type', None)
+            #     if not media_type:
+            #         continue
+            #     if media_type not in {'image/jpeg', 'image/png'}:
+            #         continue
+            #     if self.element_is_prior(item):
+            #         # 表紙だった。(表紙が最後にある場合がある)
+            #         image_paths_prior.append(item.attrib['href'])
+            #     else:
+            #         image_paths.append(item.attrib['href'])
+            #
+            # return image_paths_prior + image_paths
+
+    # def get_image_page_from_item_tag(self, item):
+    #     """
+    #     <item>タグから 画像クラスを取得
+    #     """
+    #     return ImagePage(item, self)
+
+    # def image_is_cover(self, image):
+    #     """
+    #     表紙エレメントか?
+    #     """
+    #     properties = element.attrib.get('properties', None)
+    #     if properties and properties.startswith('cover'):
+    #         return True
+    #     element_id = element.attrib.get('id', None)
+    #     if element_id == "cover":
+    #         return True
+    #     return False
+
+    def _move_jpeg_file(self, image_page, output_dir,
+                        page_index, convert_png=True):
+        source_image_path = image_page.image_path
+
+        if image_page.is_png:
+            if convert_png:
+                # PNGを変換する場合
+                destination_image_name = '{:03d}.jpg'.format(page_index)
+                destination_image_path = os.path.join(
+                    output_dir, destination_image_name)
+                convert_to_jpeg(source_image_path, destination_image_path)
+                return
+            destination_image_name = '{:03d}.png'.format(page_index)
+        else:
+            destination_image_name = '{:03d}.jpg'.format(page_index)
+        destination_image_path = os.path.join(
+            output_dir, destination_image_name)
+        shutil.move(source_image_path, destination_image_path)
+        print('{} -> {}'.format(source_image_path, destination_image_name))
+
+        # def _convert_png_to_jpeg(self, source_dir, image_path, output_dir,
+        #                          page_index):
+        #     """
+        #     PNG を Jpeg に変換して移動
+        #     """
+        #     try:
+        #         from PIL import Image
+        #     except ImportError:
+        #         print('PNG image found. Converting png to jpeg, require PIL.',
+        #               file=sys.stderr)
+        #         print('Try: "pip install PIL" or "pip install pillow"',
+        #               file=sys.stderr)
+        #         raise
+        #
+        #     source_image_path = os.path.join(source_dir, image_path)
+        #     destination_image_name = '{:03d}.jpg'.format(page_index)
+        #     destination_image_path = os.path.join(
+        #         output_dir, destination_image_name)
+        #     im = Image.open(source_image_path)
+        #     im = im.convert("RGB")
+        #     im.save(destination_image_path, 'jpeg', quality=70)
+        #     os.remove(source_image_path)
+        #     print('{} -> {}'.format(image_path, destination_image_name))
+
+
+def procedure(file_path, convert_png=True):
+    epub_extract_jpeg = EpubExtractJpeg(file_path, convert_png=convert_png)
+    epub_extract_jpeg.extract()
 
 
 def main():
