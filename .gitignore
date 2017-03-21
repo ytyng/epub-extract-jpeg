@@ -56,3 +56,5 @@ Podfile.lock
 # if required
 # data/*
 # config/*
+~*
+

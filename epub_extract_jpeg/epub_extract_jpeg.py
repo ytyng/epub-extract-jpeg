@@ -90,10 +90,14 @@ class ImagePage(object):
     """
     画像ページ のクラス
     """
+
     class ItemHrefNotFound(Exception):
         pass
 
     class InvalidImageLength(Exception):
+        pass
+
+    class ImagePathAttrNotFound(Exception):
         pass
 
     def __init__(self, item_element, itemref_element, epub_extract_jpeg):
@@ -130,11 +134,13 @@ class ImagePage(object):
             svg = self.page_xhtml_etree.find(
                 './/{http://www.w3.org/2000/svg}svg')
             images = svg.findall('.//{http://www.w3.org/2000/svg}image')
+            # 画像パスの属性は {http://www.w3.org/1999/xlink}href
 
         else:
             # ここ未テスト
             images = self.page_xhtml_etree.findall(
                 './/{http://www.w3.org/1999/xhtml}img')
+            # 画像パスの属性は src
 
         if len(images) != 1:
             raise self.InvalidImageLength('{}, {}'.format(
@@ -148,9 +154,18 @@ class ImagePage(object):
         画像のフルパス
         :return:
         """
-        href = self.image_element.attrib.get(
-            '{http://www.w3.org/1999/xlink}href')
-        return os.path.join(os.path.dirname(self.page_xhtml_path), href)
+        attr_names = [
+            '{http://www.w3.org/1999/xlink}href',
+            'src',
+            '{http://www.w3.org/1999/xlink}src',
+        ]
+
+        for attr_name in attr_names:
+            val = self.image_element.attrib.get(attr_name)
+            if val:
+                return os.path.join(os.path.dirname(self.page_xhtml_path), val)
+
+        raise self.ImagePathAttrNotFound(self.image_element.attrib)
 
     # その他プロパティが必要であれば
     # self.image_element.attrib.get('width', None)
