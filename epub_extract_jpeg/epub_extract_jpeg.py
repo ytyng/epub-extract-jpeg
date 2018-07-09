@@ -295,14 +295,14 @@ class EpubExtractJpeg(object):
         if image_page.is_png:
             if convert_png:
                 # PNGを変換する場合
-                destination_image_name = '{:03d}.jpg'.format(page_index)
+                destination_image_name = '{:05d}.jpg'.format(page_index)
                 destination_image_path = os.path.join(
                     output_dir, destination_image_name)
                 convert_to_jpeg(source_image_path, destination_image_path)
                 return
-            destination_image_name = '{:03d}.png'.format(page_index)
+            destination_image_name = '{:05d}.png'.format(page_index)
         else:
-            destination_image_name = '{:03d}.jpg'.format(page_index)
+            destination_image_name = '{:05d}.jpg'.format(page_index)
         destination_image_path = os.path.join(
             output_dir, destination_image_name)
         shutil.move(source_image_path, destination_image_path)
