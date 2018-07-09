@@ -2,6 +2,13 @@
 epub-extract-jpeg
 ~~~~~~~~~~~~~~~~~
 
+
+DEPRECATED!!!
+
+epub-extractor https://github.com/ytyng/epub-extractor
+に、機能が取り込まれました
+
+
 Extract Jpeg files in COMIC EPUB file,
 
 
